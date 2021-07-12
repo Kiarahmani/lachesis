@@ -1,87 +1,152 @@
-# This is a sample Python script.
-
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
-#
-#
+import yaml
 from utils import *
 from dsl import *
 from pysmt.shortcuts import *
 from pysmt.typing import INT
 from pysmt.oracles import get_logic
+from examples.banking import *
 
-_SOLVER = 'z3'
-
-
-def execution_coverage():
-    l_i, l_v, l_f, r_i, r_v, r_f = [Symbol(s, INT) for s in
-                                    ['l_i', 'l_v', 'l_f', 'r_i', 'r_v', 'r_f']]
-
-    ser_exec = And(
-        Equals(r_f, Minus(r_v, Int(10))),
-        Equals(r_f, l_i),
-        Equals(l_i, l_v),
-        Equals(l_f, Minus(l_v, Int(10))))
-    # nser_exec = And(Equals(r_i, ns_r_v),
-    #                Equals(ns_l_i, ns_l_v),
-    #                Equals(ns_l_i, r_i),
-    #                Equals(ns_r_f, Minus(ns_r_v, Int(10))),
-    #                Equals(ns_l_f, Minus(ns_l_v, Int(10))))
-
-    model = get_model(ser_exec, solver_name=_SOLVER, logic='QF_LIA')
-    print('\n<L>')
-    print('i: ' + str(model[l_i]))
-    print('v: ' + str(model[l_v]))
-    print('f: ' + str(model[l_f]))
-
-    print('\n<R>')
-    print('i: ' + str(model[r_i]))
-    print('v: ' + str(model[r_v]))
-    print('f: ' + str(model[r_f]))
+# load the configuration file
+with open("config.yaml", 'rb') as config_file:
+    config = yaml.safe_load(config_file)
 
 
-def execution_coverage2():
-    t1 = Withdraw(id=1, step_cnt=3)
-    t2 = Withdraw(id=2, step_cnt=3)
+class Execution(object):
+    object_map = {}
+    constraints = None
 
-    ser_exec = And(read(t1.balance[0], t1.balance[1], t1.var),
-                   Ite(GE(t1.var, t1.amnt), dec(t1.balance[1], t1.balance[2], t1.amnt),
-                       Equals(t1.balance[1], t1.balance[2])),
-                   # second transaction
-                   Equals(t1.balance[2], t2.balance[0]),
-                   read(t2.balance[0], t2.balance[1], t2.var),
-                   Ite(GE(t2.var, t2.amnt), dec(t2.balance[1], t2.balance[2], t2.amnt),
-                       Equals(t2.balance[1], t2.balance[2])))
+    def __init__(self, identifier, object_names, transactions, orders):
+        self.identifier = identifier
+        self.length = len(orders) + 1
+        self.orders = orders
+        self.transactions = transactions
+        for name in object_names:
+            self.object_map[name] = get_object_array(name, self.length, INT)
 
-    t3 = Withdraw(id=3, step_cnt=3)
-    t4 = Withdraw(id=4, step_cnt=3)
-    nser_exec = And(read(t3.balance[0], t3.balance[1], t3.var),
-                    Equals(t3.balance[1], t4.balance[0]),
-                    read(t4.balance[0], t4.balance[1], t4.var),
-                    Ite(GE(t3.var, t3.amnt), dec(t4.balance[1], t3.balance[2], t3.amnt),
-                        Equals(t4.balance[1], t3.balance[2])),
-                    Ite(GE(t4.var, t4.amnt), dec(t3.balance[2], t4.balance[2], t4.amnt),
-                        Equals(t3.balance[2], t4.balance[2])),
-                    )
+    def print_execution(self, model):
+        # initialize the transaction pointers
+        transaction_pointer = {}
+        for i in range(len(self.transactions)):
+            transaction_pointer[i] = 0
 
-    seen_models = TRUE()
-    final_query = And(nser_exec, ser_exec, GT(t1.amnt, Int(0)), Equals(t1.balance[0], t3.balance[0]),
-                      Equals(t1.amnt, t3.amnt), Equals(t2.amnt, t4.amnt), Not(Equals(t2.balance[2], t4.balance[2])))
-    for i in range(1):
-        model = get_model(And(seen_models, final_query), solver_name=_SOLVER, logic='QF_LIA')
-        if model:
-            t1.print_model(model)
-            t2.print_model(model)
-            t3.print_model(model)
-            t4.print_model(model)
-            # seen_models = And(seen_models, Not(Equals(t4.balance[2],model[t4.balance[2]])))
-        else:
-            print('no model exists')
-        # print("#" * 70)
+        # iterate over all steps in the execution and print the database state + the executed operations
+        for i in range(self.length):
+            # print the value of all objects
+            for key in self.object_map.keys():
+                object_name = self.object_map[key]
+
+                database_state = colored(150, 150, 150, "--" * 15 +
+                                         " " + key + " = " + str(model[object_name[i]]))
+                print(database_state)
+
+            if i == self.length - 1:
+                break
+            # print the next operation from the next transaction
+            next_transaction = self.transactions[self.orders[i]]
+            transaction_header = known_colored(next_transaction.color,
+                                               next_transaction.name +
+                                               "(" + ','.join(
+                                                   arg + ":" + str(model[next_transaction.args[arg]]) for arg in
+                                                   next_transaction.args) + "){")
+
+            transaction_body = known_colored(next_transaction.color,
+                                             next_transaction.operation_names[transaction_pointer[self.orders[i]]])
+            # print the header only before the first operation
+            if transaction_pointer[self.orders[i]] == 0:
+                print(transaction_header + '\n' + transaction_body)
+            else:
+                print(transaction_body)
+            # update the pointer
+            transaction_pointer[self.orders[i]] += 1
+
+
+class Transaction(object):
+    def __init__(self, name, identifier):
+        self.name = name
+        self.identifier = identifier
+        self.args = {}
+        self.vars = {}
+        self.operation_names = []
+        self.color = 'white'
+
+
+def make_withdraw_transaction(identifier):
+    txn = Transaction('Withdraw', identifier)
+    txn.args['amount'] = Symbol('wd' + str(txn.identifier) + '_amount', INT)
+    txn.vars['x'] = Symbol('wd' + str(txn.identifier) + '_x', INT)
+    txn.operation_names.append(tab(2) + 'LET x:=READ(balance) IN {')
+    txn.operation_names.append(tab(4) + 'IF(x>amount){ \n' +
+                               tab(6) + 'DEC(balance, amount)\n' +
+                               tab(4) + '}\n' +
+                               tab(2) + '}\n' + '}')
+    return txn
+
+
+def make_withdraw_constraints(transaction, operation_id, object_map, global_counter):
+    initial_object = object_map['balance'][global_counter]
+    final_object = object_map['balance'][global_counter + 1]
+    if operation_id == 0:
+        return sym_read(initial_object, final_object, transaction.vars['x'])
+    elif operation_id == 1:
+        return Ite(GE(transaction.vars['x'], transaction.args['amount']),
+                   sym_dec(initial_object, final_object, transaction.args['amount']),
+                   Equals(initial_object, final_object))
+    else:
+        raise Exception('withdraw has only two operations. Given operation id: ' + str(operation_id))
+
+
+def make_execution(identifier, transactions, object_names, orders):
+    # initialize an execution
+    execution = Execution(identifier, object_names, transactions, orders)
+    # initialize the program counter to 0 for all transactions
+    transaction_counter = {}
+    global_counter = 0
+    for order in orders:
+        transaction_counter[order] = 0
+
+    # construct the symbolic constraints of the execution
+    all_execution_constraints = TRUE()
+    for order in orders:
+        # constrain the values of objects, based on the next transaction to be executed
+        current_transaction = transactions[order]
+        current_transaction_counter = transaction_counter[order]
+        new_constraints = make_withdraw_constraints(current_transaction, current_transaction_counter,
+                                                    execution.object_map, global_counter)
+        all_execution_constraints = And(all_execution_constraints, new_constraints)
+        # update the local and the global counters
+        transaction_counter[order] += 1
+        global_counter += 1
+    execution.constraints = all_execution_constraints
+    return execution
+
+
+def run_analysis():
+    t1 = make_withdraw_transaction(1)
+    t1.color = 'blue'
+    t2 = make_withdraw_transaction(2)
+    t2.color = 'red'
+    e1 = make_execution(identifier=1, transactions=[t1, t2], object_names=['balance'], orders=[0, 0, 1, 1])
+    #e2 = make_execution(identifier=1, transactions=[t1, t2], object_names=['balance'], orders=[0, 1, 0, 1])
+
+    final_query = And(e1.constraints,
+                      #e2.constraints,
+                      # enforce a particular program path
+                      LT(t1.args['amount'], e1.object_map['balance'][0]),
+                      #LT(t1.args['amount'], e2.object_map['balance'][0]),
+                      # enforce positive amounts to be withdrawn
+                      GT(t1.args['amount'], Int(0)),
+                      GT(t2.args['amount'], Int(0))
+                      )
+
+    model = get_model(final_query, solver_name=config['solver'], logic='QF_LIA')
+    if model:
+        e1.print_execution(model)
+        #print('\n\n')
+        #e2.print_execution(model)
+    else:
+        print('model does not exist')
+    return
 
 
 if __name__ == '__main__':
-    print('-' * 100)
-    execution_coverage2()
-    print('-' * 100)
-    print()
+    run_analysis()
