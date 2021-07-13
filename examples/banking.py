@@ -5,31 +5,28 @@ from utils import *
 from dsl import *
 
 
+def make_withdraw_transaction(identifier, color):
+    txn = Transaction('Withdraw', identifier)
+    txn.args['amount'] = Symbol('wd' + str(txn.identifier) + '_amount', INT)
+    txn.vars['x'] = Symbol('wd' + str(txn.identifier) + '_x', INT)
+    txn.operation_names.append(tab(2) + 'LET x:=READ(balance) IN {')
+    txn.operation_names.append(tab(4) + 'IF(x>amount){ \n' +
+                               tab(6) + 'DEC(balance, amount)\n' +
+                               tab(4) + '}\n' +
+                               tab(2) + '}\n' + '}')
+    txn.color = color
+    txn.constraints = And(GT(txn.args['amount'], Int(0)))
+    return txn
 
 
-
-
-class DEPR_OLD_Withdraw:
-    def print_model(self, model, color='white'):
-        print(known_colored(color,
-                            '\n\nWithDraw#' + str(self.id) + "(amount:" + str(model[self.amount]) + "){"))
-        j = 0
-        for i in range(len(self.balance) * 2 - 2):
-            if i == 1:
-                print(tab(2) + known_colored(color, 'LET v := READ(bal) IN{'))
-                continue
-            elif i == 3:
-                print(tab(4) + known_colored(color, 'IF(v>=amount){ DEC(bal,amount) }'))
-                print(tab(2) + known_colored(color, '}'))
-            database_state = colored(210, 220, 0,
-                                     '..' * 20 + '@' + str(j) + '[bal:' + str(model[self.balance[j]]) + ']')
-            print(database_state)
-            j += 1
-        print(known_colored(color, '}'))
-
-    def __init__(self, identifier, step_cnt):
-        self.step_cnt = step_cnt
-        self.id = identifier
-        self.balance = get_object_array('wd' + str(identifier) + '_bal', step_cnt, INT)
-        self.var = Symbol('wd' + str(identifier) + '_var', INT)
-        self.amount = Symbol('wd' + str(identifier) + '_amount', INT)
+def make_withdraw_constraints(transaction, operation_id, object_map, global_counter):
+    initial_object = object_map['balance'][global_counter]
+    final_object = object_map['balance'][global_counter + 1]
+    if operation_id == 0:
+        return sym_read(initial_object, final_object, transaction.vars['x'])
+    elif operation_id == 1:
+        return Ite(GE(transaction.vars['x'], transaction.args['amount']),
+                   sym_dec(initial_object, final_object, transaction.args['amount']),
+                   Equals(initial_object, final_object))
+    else:
+        raise Exception('withdraw has only two operations. Given operation id: ' + str(operation_id))
