@@ -1,7 +1,12 @@
 from pysmt.oracles import get_logic
 from pysmt.shortcuts import *
 from pysmt.typing import INT
+import yaml
 
+
+# load the configuration file
+with open("config.yaml", 'rb') as config_file:
+    config = yaml.safe_load(config_file)
 
 # used for printing i number of tabs in the console output
 def tab(i):
@@ -27,3 +32,8 @@ def known_colored(color, text):
 def get_object_array(label, snapshot_cnt, tp):
     return [Symbol(label + "_" + str(i), tp) for i in range(snapshot_cnt)]
 
+
+
+# fills the default config args
+def get_default_model(query):
+    return get_model(query, solver_name=config['solver'], logic='QF_LIA')

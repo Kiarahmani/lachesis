@@ -12,16 +12,15 @@ with open("config.yaml", 'rb') as config_file:
 
 
 class Execution(object):
-    object_map = {}
-    constraints = None
-
     def __init__(self, identifier, object_names, transactions, orders):
         self.identifier = identifier
         self.length = len(orders) + 1
         self.orders = orders
         self.transactions = transactions
+        self.object_map = {}
+        self.constraints = None
         for name in object_names:
-            self.object_map[name] = get_object_array(name, self.length, INT)
+            self.object_map[name] = get_object_array('e' + str(identifier) + '_' + name, self.length, INT)
 
     def print_execution(self, model):
         # initialize the transaction pointers
@@ -70,7 +69,7 @@ class Transaction(object):
         self.color = 'white'
 
 
-def make_withdraw_transaction(identifier):
+def make_withdraw_transaction(identifier, color):
     txn = Transaction('Withdraw', identifier)
     txn.args['amount'] = Symbol('wd' + str(txn.identifier) + '_amount', INT)
     txn.vars['x'] = Symbol('wd' + str(txn.identifier) + '_x', INT)
@@ -79,6 +78,7 @@ def make_withdraw_transaction(identifier):
                                tab(6) + 'DEC(balance, amount)\n' +
                                tab(4) + '}\n' +
                                tab(2) + '}\n' + '}')
+    txn.color = color
     return txn
 
 
@@ -98,6 +98,7 @@ def make_withdraw_constraints(transaction, operation_id, object_map, global_coun
 def make_execution(identifier, transactions, object_names, orders):
     # initialize an execution
     execution = Execution(identifier, object_names, transactions, orders)
+
     # initialize the program counter to 0 for all transactions
     transaction_counter = {}
     global_counter = 0
@@ -121,31 +122,48 @@ def make_execution(identifier, transactions, object_names, orders):
 
 
 def run_analysis():
-    t1 = make_withdraw_transaction(1)
-    t1.color = 'blue'
-    t2 = make_withdraw_transaction(2)
-    t2.color = 'red'
+    t1 = make_withdraw_transaction(1, 'blue')
+    t2 = make_withdraw_transaction(2, 'red')
+    t3 = make_withdraw_transaction(3, 'blue')
+    t4 = make_withdraw_transaction(4, 'red')
+
     e1 = make_execution(identifier=1, transactions=[t1, t2], object_names=['balance'], orders=[0, 0, 1, 1])
-    #e2 = make_execution(identifier=1, transactions=[t1, t2], object_names=['balance'], orders=[0, 1, 0, 1])
+    e2 = make_execution(identifier=2, transactions=[t3, t4], object_names=['balance'], orders=[0, 1, 0, 1])
 
-    final_query = And(e1.constraints,
-                      #e2.constraints,
-                      # enforce a particular program path
-                      LT(t1.args['amount'], e1.object_map['balance'][0]),
-                      #LT(t1.args['amount'], e2.object_map['balance'][0]),
-                      # enforce positive amounts to be withdrawn
-                      GT(t1.args['amount'], Int(0)),
-                      GT(t2.args['amount'], Int(0))
-                      )
 
-    model = get_model(final_query, solver_name=config['solver'], logic='QF_LIA')
-    if model:
-        e1.print_execution(model)
-        #print('\n\n')
-        #e2.print_execution(model)
+    final_query1 = And(e1.constraints,
+                       GT(t1.args['amount'], Int(0)),
+                       GT(t2.args['amount'], Int(0)),
+                       #LT(t1.args['amount'], e1.object_map['balance'][0]),
+                       #LT(t2.args['amount'], e1.object_map['balance'][2])
+                       )
+
+    final_query2 = And(e2.constraints,
+                       GT(t3.args['amount'], Int(0)),
+                       GT(t4.args['amount'], Int(0)),
+                       #LT(t3.args['amount'], e2.object_map['balance'][0]),
+                       #LT(t4.args['amount'], e2.object_map['balance'][1])
+                       )
+
+
+    assert_eq_args = And(Equals(t1.args['amount'],t3.args['amount']),
+                         Equals(t2.args['amount'],t4.args['amount']))
+
+    assert_eq_init_db = Equals(e1.object_map['balance'][0],e2.object_map['balance'][0])
+    assert_not_eq_final_db = Not(Equals(e1.object_map['balance'][4], e2.object_map['balance'][4]))
+
+
+    unified_query = And(final_query1, final_query2, assert_eq_args, assert_eq_init_db,assert_not_eq_final_db)
+    unified_model = get_default_model(unified_query)
+
+    if unified_model:
+        e1.print_execution(unified_model)
+        print('\n\n\n' + "*" * 50 + '\n\n\n')
+        e2.print_execution(unified_model)
     else:
-        print('model does not exist')
-    return
+        print('no model exists')
+
+
 
 
 if __name__ == '__main__':
