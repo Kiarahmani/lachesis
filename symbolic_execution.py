@@ -38,8 +38,8 @@ def assert_initial_db_eq(e1, e2):
     return res
 
 
-# asserts that all objects at the end of the execution have different values
-def assert_final_db_neq(e1, e2):
+# asserts that *all* objects at the end of the execution have different values
+def assert_all_final_db_neq(e1, e2):
     assert e1.object_map.keys() == e2.object_map.keys()
     assert e1.length == e2.length
     last_index = e1.length - 1
@@ -47,6 +47,32 @@ def assert_final_db_neq(e1, e2):
     for key in e1.object_map.keys():
         res = And(res, Not(Equals(e1.object_map[key][last_index], e2.object_map[key][last_index])))
     return res
+
+
+# asserts that *any* objects at the end of the execution have different values
+def assert_any_final_db_neq(e1, e2):
+    assert e1.object_map.keys() == e2.object_map.keys()
+    assert e1.length == e2.length
+    last_index = e1.length - 1
+    res = FALSE()
+    for key in e1.object_map.keys():
+        res = Or(res, Not(Equals(e1.object_map[key][last_index], e2.object_map[key][last_index])))
+    return res
+
+
+# asserts that *the given* objects at the end of the execution have different values
+def assert_final_db_neq(e1, e2, objects):
+    assert e1.object_map.keys() == e2.object_map.keys()
+    assert e1.length == e2.length
+    last_index = e1.length - 1
+    res = TRUE()
+    for key in e1.object_map.keys():
+        if key not in objects:
+            continue
+        res = And(res, Not(Equals(e1.object_map[key][last_index], e2.object_map[key][last_index])))
+    return res
+
+
 
 
 # asserts that arguments to both transactions are equal

@@ -24,6 +24,53 @@ def sym_inc(init, final, value):
     return And(Equals(final, Plus(init, value)))
 
 
+# higher-level database operations -- these functions take object names and current execution pointer
+# (as opposed to the symbolic objects that are given in the above functions )
+def do_read(step, object_map, object_to_read, variable):
+    res = TRUE()
+    for obj in object_map.keys():
+        res = And(res, Equals(object_map[obj][step], object_map[obj][step + 1]))
+    res = And(res, Equals(variable, object_map[object_to_read][step]))
+    return res
+
+def do_write(step, object_map, object_to_write, value):
+    res = TRUE()
+    for obj in object_map.keys():
+        if obj == object_to_write:
+            res = And(res, sym_write(object_map[obj][step], object_map[obj][step + 1], value))
+        else:
+            res = And(res, Equals(object_map[obj][step], object_map[obj][step + 1]))
+    return res
+
+def do_dec(step, object_map, object_to_write, value):
+    res = TRUE()
+    for obj in object_map.keys():
+        if obj == object_to_write:
+            res = And(res, sym_dec(object_map[obj][step], object_map[obj][step + 1], value))
+        else:
+            res = And(res, Equals(object_map[obj][step], object_map[obj][step + 1]))
+    return res
+
+def do_inc(step, object_map, object_to_write, value):
+    res = TRUE()
+    for obj in object_map.keys():
+        if obj == object_to_write:
+            res = And(res, sym_inc(object_map[obj][step], object_map[obj][step + 1], value))
+        else:
+            res = And(res, assert_no_change(step, object_map, obj))
+    return res
+
+
+# returns an assertion that the given object does not change at this step
+def assert_no_change(step, object_map, obj):
+    return Equals(object_map[obj][step], object_map[obj][step + 1])
+
+
+# skip, i.e. assert all objects return the same at this step
+def do_skip(step, object_map):
+    return And([assert_no_change(step, object_map, obj) for obj in object_map.keys()])
+
+
 
 class Execution(object):
     def __init__(self, identifier, object_names, transactions, orders):
@@ -81,14 +128,4 @@ class Transaction(object):
         self.vars = {}
         self.operation_names = []
         self.color = 'white'
-        self.constraints = None
-
-
-
-
-
-
-
-
-
-
+        self.constraints = TRUE()
