@@ -1,1 +1,7 @@
 solver : 'z3'
+logic : 'QF_LIA'
+
+
+
+# settings:
+_print_transactions_in_executions : False

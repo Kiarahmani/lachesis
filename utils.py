@@ -36,4 +36,4 @@ def get_object_array(label, snapshot_cnt, tp):
 
 # fills the default config args
 def get_default_model(query):
-    return get_model(query, solver_name=config['solver'], logic='QF_LIA')
+    return get_model(query, solver_name=config['solver'], logic=config['logic'])

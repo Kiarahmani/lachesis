@@ -57,15 +57,15 @@ def run_analysis():
 
 # introducing multiple objects
 def run_analysis2():
-    t1 = make_update_backup_transaction(1, 'blue')
-    t2 = make_update_backup_transaction(2, 'red')
-    t3 = make_update_backup_transaction(3, 'blue')
-    t4 = make_update_backup_transaction(4, 'red')
+    t1 = make_swap_transaction(1, 'blue')
+    t2 = make_swap_transaction(2, 'red')
+    t3 = make_swap_transaction(3, 'blue')
+    t4 = make_swap_transaction(4, 'red')
 
     e1 = make_execution(identifier=1, transactions=[t1, t2], object_names=['X', 'Y'],
-                        orders=[0, 0, 1, 1], transactional_constraints_gen=update_backup)
+                        orders=[0, 0, 0, 0, 1, 1, 1, 1], transactional_constraints_gen=swap)
     e2 = make_execution(identifier=2, transactions=[t3, t4], object_names=['X', 'Y'],
-                        orders=[0, 1, 1, 0], transactional_constraints_gen=update_backup)
+                        orders=[0, 0, 1, 0, 0, 1, 1, 1], transactional_constraints_gen=swap)
 
     unified_query = And(e1.constraints, e2.constraints,
                         t1.constraints, t2.constraints, t3.constraints, t4.constraints,
@@ -80,23 +80,23 @@ def run_analysis2():
     seen_counter_examples = TRUE()
 
 
-    for i in range(3):
+    for i in range(100):
         print(colored(230, 230, 160, "=" * 35 + ' Run('+str(i+1)+') '+'='*35))
         unified_model = get_default_model(And(seen_counter_examples, unified_query))
         if unified_model:
-            e1.print_execution(unified_model)
-            print('\n\n\n\n')
-            e2.print_execution(unified_model)
+            if config['_print_transactions_in_executions']:
+                e1.print_execution(unified_model)
+                print('\n\n\n\n')
+                e2.print_execution(unified_model)
             seen_counter_examples = And(seen_counter_examples,
                                         assert_final_db_distinct(e1,unified_model),
                                         assert_final_db_distinct(e2,unified_model))
-            print('\n')
             final_index = e1.length - 1
             for obj in e1.object_map.keys():
                 o1 = unified_model[e1.object_map[obj][final_index]]
                 o2 = unified_model[e2.object_map[obj][final_index]]
-                print (str(obj) + ': SER=%s  NSER=%s      ' % (o1 , o2))
-            print('\n')
+                o_i = unified_model[e1.object_map[obj][0]]
+                print (str(obj) + ': init=%s  ser_f=%s  nser_f=%s      ' % (o_i,o1 , o2))
         else:
             print('no model exists')
 
