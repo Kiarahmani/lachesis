@@ -1,6 +1,19 @@
 from dsl import *
 
 
+
+
+
+
+def find_anomaly():
+    pass
+
+
+
+
+
+
+
 # returns an execution instance with constraints initialized to capture the interleaved execution of the given
 # transaction instances according to the given interleaved order
 def make_execution(identifier, transactions, object_names, orders, transactional_constraints_gen):

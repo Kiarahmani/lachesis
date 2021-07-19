@@ -4,4 +4,5 @@ logic : 'QF_LIA'
 
 
 # settings:
-_print_transactions_in_executions : False
+_print_transactions_in_executions : True
+#_print_transactions_in_executions : False
